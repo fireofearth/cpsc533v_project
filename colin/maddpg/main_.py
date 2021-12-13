@@ -81,6 +81,7 @@ def make_env(args):
         max_cycles=args.max_episode_len,
         continuous_actions=False
     ).unwrapped
+    args.n_players = 
     args.n_agents = args.num_good + args.num_adversaries
     args.obs_shape = [env.observation_space[agent_name].shape[0] for agent_name in env.agents]
     
