@@ -132,6 +132,92 @@ class RewardsShaper(object):
         
         return cum_r
 
+
+class Container(object):
+    """Container of messages and hidden states of agents in environment."""
+    
+    def reset(self):
+        
+        for idx in range(self.config.adversary.n_agents):
+            if self.config.adversary.enable_messaging:
+                self.__message_d[f"adversary_{idx}"] = torch.zeros(
+                    self.config.adversary.message_size*(self.config.adversary.n_agents - 1),
+                    dtype=torch.float, device=self.device
+                )
+            self.__hidden_d[f"adversary_{idx}"]  = torch.zeros(
+                (self.config.adversary.n_rnn_layers, 1, self.config.adversary.hidden_size,),
+                dtype=torch.float, device=self.device
+            )
+            self.__target_hidden_d[f"adversary_{idx}"]  = torch.zeros(
+                (self.config.adversary.n_rnn_layers, 1, self.config.adversary.hidden_size,),
+                dtype=torch.float, device=self.device
+            )
+        for idx in range(self.config.agent.n_agents):
+            if self.config.agent.enable_messaging:
+                self.__message_d[f"agent_{idx}"] = torch.zeros(
+                    self.config.agent.message_size*(self.config.agent.n_agents - 1),
+                    dtype=torch.float, device=self.device
+                )
+            self.__hidden_d[f"agent_{idx}"]  = torch.zeros(
+                (self.config.agent.n_rnn_layers, 1, self.config.agent.hidden_size,),
+                dtype=torch.float, device=self.device
+            )
+            self.__target_hidden_d[f"agent_{idx}"]  = torch.zeros(
+                (self.config.agent.n_rnn_layers, 1, self.config.agent.hidden_size,),
+                dtype=torch.float, device=self.device
+            )
+        
+    def __init__(self, config):
+        self.config = config
+        self.device = torch.device(config.device_id)
+        self.__message_d = {}
+        self.__hidden_d = {}
+        self.__target_hidden_d = {}
+        self.reset()
+    
+    def get_message(self, agent_name):
+        """Get message. Throws KeyError if messaging is disabled for agent class."""
+        return self.__message_d[agent_name]
+
+    def get_hidden(self, agent_name):
+        return self.__hidden_d[agent_name]
+    
+    def get_target_hidden(self, agent_name):
+        return self.__target_hidden_d[agent_name]
+
+    def update_message(self, agent_name, message):
+        """Update message cache.
+        
+        Messages of multiple agents are concatenated together.
+        For example, if agent 2 receives messages from agents 0, 1, and 3 then
+        the message is a vector of the form: [ 0's message, 1's message, 3's message ]
+
+        Throws AttributeError if messaging is disabled for agent class.
+        """
+        agent_type, agent_idx = agent_name.split("_")
+        agent_idx = int(agent_idx)
+        message_size = self.config[agent_type].message_size
+        for jdx in range(self.config[agent_type].n_agents):
+            if jdx < agent_idx:
+                start_idx = message_size * (agent_idx - 1)
+            elif jdx == agent_idx:
+                # do not update message to oneself
+                continue
+            else:
+                # agent_idx < jdx
+                start_idx = message_size * agent_idx
+            end_idx   = start_idx + self.config[agent_type].message_size
+            # print(jdx, agent_idx, self.__message_d[f"{agent_type}_{jdx}"].shape, start_idx, end_idx)
+            messages = self.__message_d[f"{agent_type}_{jdx}"]
+            self.__message_d[f"{agent_type}_{jdx}"] = \
+                    torch.hstack((messages[:start_idx], message, messages[end_idx:]))
+
+    def update_hidden(self, agent_name, hidden):
+        self.__hidden_d[agent_name] = hidden
+    
+    def update_target_hidden(self, agent_name, target_hidden):
+        self.__target_hidden_d[agent_name] = target_hidden
+
 def get_agent_counts(env):
     all_agents = 0
     adversaries = 0

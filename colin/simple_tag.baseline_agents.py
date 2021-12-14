@@ -19,7 +19,7 @@ import imageio
 from pettingzoo.mpe import simple_tag_v2
 from pettingzoo.utils import random_demo
 
-from common import (AttrDict, TimeDelta, Normalizer, RewardsShaper,
+from common import (AttrDict, TimeDelta, Normalizer, RewardsShaper, Container,
         get_agent_counts, get_landmark_count, process_config,
         pad_amt, pad_image, moving_average, pad_values_front)
 from baseline import SimpleTagNet, choose_action, save_agent
@@ -63,7 +63,8 @@ def make_args():
 
     config.common=AttrDict(
         hidden_size=32,
-        enable_rnn=True,
+        enable_rnn=config.enable_rnn,
+        enable_messaging=False,
         n_rnn_layers=1,
         n_actions=env.action_space(env.agent_selection).n,
     )
@@ -76,7 +77,8 @@ def make_args():
         n_agents=config.n_good_agents,
         observation_shape=env.observation_space("agent_0").shape
     )
-    config.exp_name = (f"baseline_nadversaries{config.n_adversaries}"
+    model_tag = "_rnn" if config.enable_rnn else "_mlp"
+    config.exp_name = (f"baseline{model_tag}_nadversaries{config.n_adversaries}"
                     f"_ngoodagents{config.n_good_agents}"
                     f"_landmarks{config.n_landmarks}")
     process_config(config)
@@ -113,7 +115,7 @@ def plot_training_run(savedir, logger):
     fig.savefig(os.path.join(savedir, "training_run.png"))
 
 def run_episode(
-    config, adversary_net, agent_net, epsilon=0.05,
+    config, container, adversary_net, agent_net, epsilon=0.05,
     should_render=False, is_val=False, save_video=False, save_video_path=None
 ):
     """Run one episodes.
@@ -140,10 +142,9 @@ def run_episode(
         reward=AttrDict(adversary=0, agent=0),
         step_records=[],
     )
+    container.reset()
     n_agents = config.adversary.n_agents + config.agent.n_agents
     step_record = None
-    adversary_hidden = None
-    agent_hidden = None
     env.reset()
     for agent_step_idx, agent_name in enumerate(env.agent_iter()):
         if agent_step_idx % n_agents == 0:
@@ -179,8 +180,9 @@ def run_episode(
             )
             env.step(None)
             continue
+        hidden = container.get_hidden(agent_name)
         if agent_type == "agent":
-            Q_curr, agent_hidden = agent_net(obs_curr, agent_hidden)
+            Q_curr, hidden = agent_net(obs_curr, hidden)
             action = choose_action(config, agent_type, Q_curr, epsilon, is_val=is_val)
             env.step(action)
             step_record[agent_type][agent_idx] = AttrDict(
@@ -191,7 +193,7 @@ def run_episode(
             )
         else:
             # agent_type == "adversary"
-            Q_curr, adversary_hidden = adversary_net(obs_curr, adversary_hidden)
+            Q_curr, hidden = adversary_net(obs_curr, hidden)
             action = choose_action(config, agent_type, Q_curr, epsilon, is_val=is_val)
             env.step(action)
             step_record[agent_type][agent_idx] = AttrDict(
@@ -200,6 +202,7 @@ def run_episode(
                 reward=reward,
                 done=done,
             )
+        container.update_hidden(agent_name, hidden)
         episode.reward[agent_type] += reward
     
     if should_render:
@@ -208,7 +211,7 @@ def run_episode(
         imageio.mimwrite(save_video_path, rendered_video, fps=30)
     return episode
 
-def train_agents(config, device, batch, adversary_net, agent_net,
+def train_agents(config, device, container, batch, adversary_net, agent_net,
                  adversary_target_net, agent_target_net,
                  adversary_optimizer, agent_optimizer):
     """Compute loss of episode and update agent weights."""
@@ -219,10 +222,7 @@ def train_agents(config, device, batch, adversary_net, agent_net,
     agent_losses = []
     
     for episode in batch:
-        adversary_hidden = None
-        agent_hidden = None
-        agent_target_hidden = None
-        adversary_target_hidden = None
+        container.reset()
         for step_idx in range(episode.steps):
             # Optimize adversary network
             for agent_idx in episode.step_records[step_idx].adversary.keys():
@@ -238,15 +238,23 @@ def train_agents(config, device, batch, adversary_net, agent_net,
                     y = r
                 else:
                     with torch.no_grad():
+                        adversary_target_hidden =  container.get_target_hidden(
+                            f"adversary_{agent_idx}"
+                        )
                         next_o = next_record.observation
                         target_Q, adversary_target_hidden = adversary_target_net(
                             next_o, adversary_target_hidden
                         )
+                        container.update_target_hidden(
+                            f"adversary_{agent_idx}", adversary_target_hidden
+                        )
                         max_target_Q = torch.max(target_Q)
                         y = r + discount*max_target_Q
+                adversary_hidden =  container.get_hidden(f"adversary_{agent_idx}")
                 curr_o = curr_record.observation
                 u = curr_record.action
                 Q, adversary_hidden = adversary_net(curr_o, adversary_hidden)
+                container.update_hidden(f"adversary_{agent_idx}", adversary_hidden)
                 Q_u = Q[u]
                 adversary_losses.append(criterion(y, Q_u))
         
@@ -265,15 +273,23 @@ def train_agents(config, device, batch, adversary_net, agent_net,
                     y = r
                 else:
                     with torch.no_grad():
+                        agent_target_hidden =  container.get_target_hidden(
+                            f"agent_{agent_idx}"
+                        )
                         next_o = next_record.observation
                         target_Q, agent_target_hidden = agent_target_net(
                             next_o, agent_target_hidden
                         )
+                        container.update_target_hidden(
+                            f"agent_{agent_idx}", agent_target_hidden
+                        )
                         max_target_Q = torch.max(target_Q)
                         y = r + discount*max_target_Q
+                agent_hidden =  container.get_hidden(f"agent_{agent_idx}")
                 curr_o = curr_record.observation
                 u = curr_record.action
                 Q, agent_hidden = agent_net(curr_o, agent_hidden)
+                container.update_hidden(f"agent_{agent_idx}", agent_hidden)
                 Q_u = Q[u]
                 agent_losses.append(criterion(y, Q_u))
     
@@ -305,7 +321,7 @@ def train_agents(config, device, batch, adversary_net, agent_net,
 def save_agent(savepath, net):
     torch.save(net.state_dict(), savepath)
 
-def evaluate_agents(config, savedir, episode_idx, adversary_net, agent_net):
+def evaluate_agents(config, container, savedir, episode_idx, adversary_net, agent_net):
     videodir = os.path.join(savedir, "videos")
     save_agent(os.path.join(savedir, f"adversary-net-{episode_idx}.pth"), adversary_net)
     save_agent(os.path.join(savedir, f"agent-net-{episode_idx}.pth"), agent_net)
@@ -323,7 +339,7 @@ def evaluate_agents(config, savedir, episode_idx, adversary_net, agent_net):
                 validation_save_path = os.path.join(validation_save_dir, f"eval{e}.mp4")
                 should_render = config.visualize_on_evaluation
             episode = run_episode(
-                config, adversary_net, agent_net,
+                config, container, adversary_net, agent_net,
                 should_render=should_render, save_video=save_video,
                 save_video_path=validation_save_path, is_val=True
             )
@@ -363,6 +379,7 @@ def train(config, normalizer=None):
     print("Created the agent nets.")
     adversary_optimizer = torch.optim.SGD(adversary_net.parameters(), lr=config.lr)
     agent_optimizer = torch.optim.RMSprop(agent_net.parameters())
+    container = Container(config)
     logger = AttrDict(
         episodic_losses=AttrDict(adversary=[], agent=[]),
         episodic_rewards=AttrDict(adversary=[], agent=[]),
@@ -372,6 +389,7 @@ def train(config, normalizer=None):
     print("Initial update of target nets")
     def update_targets():
         adversary_target_net.load_state_dict(adversary_net.state_dict())
+        agent_target_net.load_state_dict(agent_net.state_dict())
     update_targets()
     
     epsilon = config.eps_start
@@ -382,7 +400,8 @@ def train(config, normalizer=None):
         should_render = config.visualize and episode_idx % config.visualize_interval == 0
         config.visualize
         episode = run_episode(
-            config, adversary_net, agent_net, epsilon=epsilon, should_render=should_render
+            config, container, adversary_net, agent_net,
+            epsilon=epsilon, should_render=should_render
         )
         batch.append(episode)
         
@@ -392,7 +411,7 @@ def train(config, normalizer=None):
         # Train on the episode
         if episode_idx % config.batch_size == 0:
             episodic_losses = train_agents(
-                config, device, batch, adversary_net, agent_net,
+                config, device, container, batch, adversary_net, agent_net,
                 adversary_target_net, agent_target_net, adversary_optimizer, agent_optimizer
             )
             logger.episodic_losses.adversary.extend(episodic_losses.adversary)
@@ -421,7 +440,7 @@ def train(config, normalizer=None):
         
         if episode_idx % config.evaluation_interval == 0:
             eval_episodic_rewards = evaluate_agents(
-                config, savedir, episode_idx, adversary_net, agent_net
+                config, container, savedir, episode_idx, adversary_net, agent_net
             )
             logger.eval_episodic_rewards.append(eval_episodic_rewards)
     
