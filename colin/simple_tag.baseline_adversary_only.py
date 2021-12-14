@@ -314,9 +314,10 @@ def train(config, normalizer=None):
     print("Beginning the episodes...")
     for episode_idx in range(1, config.n_episodes + 1):
         # Run an episode
+        should_render = config.visualize and episode_idx % config.visualize_interval == 0
         episode = run_episode(
             config, adversary_net, epsilon=epsilon,
-            should_render=episode_idx % config.report_interval == 0
+            should_render=should_render
         )
         batch.append(episode)
         
