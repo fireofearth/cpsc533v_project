@@ -27,11 +27,17 @@ class SimpleTagNet(torch.nn.Module):
         self.hidden_size = config[agent_type].hidden_size
         self.n_rnn_layers = config[agent_type].n_rnn_layers
         self.enable_rnn = config[agent_type].enable_rnn
-        self.normalizer = normalizer
+        # self.enable_messaging = config[agent_type].enable_messaging
         
+        self.normalizer = normalizer
+        if self.normalizer is None:
+            print("Not normalizing observation")
+        else:
+            print(f"Using normalizer {self.normalizer.__class__.__name__}")
+            
         if self.enable_rnn:
             print(
-                f"Creating baseline RNN net for {agent_type} "
+                f"    using RNN net for {agent_type} "
                 f"with {self.n_rnn_layers} layers"
             )
             self.mlp = torch.nn.Sequential(
@@ -46,7 +52,7 @@ class SimpleTagNet(torch.nn.Module):
             )
             self.output_mlp = torch.nn.Linear(self.hidden_size, self.n_actions)
         else:
-            print(f"Creating baseline MLP net for {agent_type}")
+            print(f"    using MLP net for {agent_type}")
             self.output_mlp = torch.nn.Sequential(
                 torch.nn.Linear(self.observation_size, self.hidden_size),
                 torch.nn.ReLU(inplace=True),

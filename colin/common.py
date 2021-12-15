@@ -60,7 +60,7 @@ class Normalizer(object):
         s is a scalar or an ndarray of one dimension."""
         return np.clip(s, -3, 3) / 3
 
-    def __call__(self, obs):
+    def __call__(self, obs, agent_name=None):
         # normalize and clip positions
         norm_obs = obs.copy()
         # normalize velocity of current entity
@@ -75,6 +75,109 @@ class Normalizer(object):
             )
         # normalize velocity of other entities
         norm_obs[4 + (2*n_range):] = norm_obs[4 + (2*n_range):] / 1.3
+        return norm_obs
+
+class POMDPNormalizer(object):
+    def __init__(self, env):
+        self.n_landmarks = len(env.world.landmarks)
+        self.n_allagents = len(env.world.agents)
+        self.n_good = sum(map(lambda a: not a.adversary, env.world.agents))
+
+        # Extra stuff for POMDP
+        # distance mask for relative position
+        self.d_mask = 0.5
+        # value to mask observations
+        self.mask_v = 1.5
+        self.name_to_idx = {agent.name: i for i, agent in enumerate(env.world.agents)}
+        self.idx_to_name = {i: agent.name for i, agent in enumerate(env.world.agents)}
+        self.goodagent_indices = [
+            i for i, agent in enumerate(env.world.agents) if agent.name.startswith("agent")
+        ]
+        self.adversary_indices = [
+            i for i, agent in enumerate(env.world.agents) if agent.name.startswith("adversary")
+        ]
+    
+    @staticmethod
+    def normalize_abs_pos(s):
+        """Clip absolute position and scale to [-1, 1]
+        s is a scalar or an ndarray of one dimension."""
+        return np.clip(s, -1.5, 1.5) / 1.5
+
+    @staticmethod
+    def normalize_rel_pos(s):
+        """Clip relative position and scale to [-1, 1]
+        s is a scalar or an ndarray of one dimension."""
+        return np.clip(s, -3, 3) / 3
+    
+    def normalize_opp_rel_pos(self, s):
+        """Clip relative position and scale to [-1, 1]
+        s is a scalar or an ndarray of one dimension."""
+        return np.clip(s, -self.d_mask, self.d_mask) / self.d_mask
+
+    def __call__(self, obs, agent_name):
+        # normalize and clip positions
+        norm_obs = obs.copy()
+        # normalize velocity of current entity
+        norm_obs[:2] = norm_obs[:2] / 1.3
+        # clip/scale abs. position of current entity
+        norm_obs[2:4] = self.normalize_abs_pos(norm_obs[2:4])
+        
+        # clip/scale rel. position of landmarks
+        for i in range(self.n_landmarks):
+            norm_obs[4 + (2*i):4 + (2*(i + 1))] = self.normalize_rel_pos(
+                norm_obs[4 + (2*i):4 + (2*(i + 1))]
+            )
+        # normalize velocity of other entities
+        n_range = self.n_landmarks + self.n_allagents - 1
+        norm_obs[4 + (2*n_range):] = norm_obs[4 + (2*n_range):] / 1.3
+
+        # Apply POMDP
+        agent_idx = self.name_to_idx[agent_name]
+        _obs = obs[4 + 2*self.n_landmarks:]
+        start_idx = 4 + 2*self.n_landmarks
+        vel_start_idx = 4 + 2*(self.n_landmarks + self.n_allagents - 1)
+        if agent_name.startswith("agent"):
+            # mask observation from far adversary
+            for adversary_idx in self.adversary_indices:
+                i    = adversary_idx - 1 if agent_idx < adversary_idx else adversary_idx
+                x, y = _obs[2*i:2*i + 2]
+                d    = math.sqrt(x**2 + y**2)
+                if d > self.d_mask:
+                    norm_obs[start_idx + 2*i:start_idx + 2*(i + 1)] = self.mask_v
+                else:
+                    norm_obs[start_idx + 2*i:start_idx + 2*(i + 1)] = self.normalize_opp_rel_pos(
+                        norm_obs[start_idx + 2*i:start_idx + 2*(i + 1)]
+                    )
+            for goodagent_idx in self.goodagent_indices:
+                if goodagent_idx == agent_idx:
+                    continue
+                i    = goodagent_idx - 1 if agent_idx < goodagent_idx else goodagent_idx
+                norm_obs[start_idx + 2*i:start_idx + 2*(i + 1)] = self.normalize_rel_pos(
+                    norm_obs[start_idx + 2*i:start_idx + 2*(i + 1)]
+                )
+        else:
+            # agent_name.startswith("adversary")
+            # mask observation from far agent
+            for adversary_idx in self.adversary_indices:
+                if adversary_idx == agent_idx:
+                    continue
+                i    = adversary_idx - 1 if agent_idx < adversary_idx else adversary_idx
+                norm_obs[start_idx + 2*i:start_idx + 2*(i + 1)] = self.normalize_rel_pos(
+                    norm_obs[start_idx + 2*i:start_idx + 2*(i + 1)]
+                )
+            for vel_i, goodagent_idx in enumerate(self.goodagent_indices):
+                i    = goodagent_idx - 1 if agent_idx < goodagent_idx else goodagent_idx
+                x, y = _obs[2*i:2*i + 2]
+                d    = math.sqrt(x**2 + y**2)
+                if d > self.d_mask:
+                    # 
+                    norm_obs[start_idx + 2*i:start_idx + 2*(i + 1)] = self.mask_v
+                    norm_obs[vel_start_idx + 2*vel_i:vel_start_idx + 2*(vel_i + 1)] = self.mask_v
+                else:
+                    norm_obs[start_idx + 2*i:start_idx + 2*(i + 1)] = self.normalize_opp_rel_pos(
+                        norm_obs[start_idx + 2*i:start_idx + 2*(i + 1)]
+                    )
+
         return norm_obs
 
 class RewardsShaper(object):
