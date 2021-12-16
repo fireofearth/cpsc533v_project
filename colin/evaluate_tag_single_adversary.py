@@ -37,7 +37,7 @@ def make_args(config):
     env.reset()
 
     config.common=AttrDict(
-        hidden_size=32,
+        hidden_size=64,
         enable_rnn=config.enable_rnn,
         enable_messaging=False,
         n_rnn_layers=1,
@@ -218,7 +218,7 @@ def evaluate(config, normalizer=None, path=None):
 
     # Load the models!
     # with reward shaping
-    adversary_net.load_state_dict(torch.load(os.path.join(path, 'adversary-net-20000.pth'), map_location=torch.device('cpu')))
+    adversary_net.load_state_dict(torch.load(os.path.join(path, 'adversary-net-10000.pth'), map_location=torch.device('cpu')))
 
     eval_episodic_rewards = evaluate_agents(
         config, container, adversary_net, path
@@ -243,10 +243,11 @@ def collin(d):
 import json
 if __name__ == "__main__":
     # with reward shaping
-    # path = "/Users/frankyu/Desktop/models/advonly_rnn_nadversaries1_ngoodagents1_landmarks0/14_Dec_2021_22_36_36/" 
-    
+    # path = "/Users/frankyu/Desktop/models/advonly_rnn_nadversaries1_ngoodagents1_landmarks0/15_Dec_2021_19_25_49/" 
+
     # no reward shaping
-    path = "/Users/frankyu/Desktop/models/advonly_rnn_nadversaries1_ngoodagents1_landmarks0/14_Dec_2021_22_50_15"
+    path = "/Users/frankyu/Desktop/models/advonly_rnn_nadversaries1_ngoodagents1_landmarks0-noRewardShape/15_Dec_2021_19_25_48"
+    
     json_path = os.path.join(path, "config.json")
     with open(json_path) as f:
         config = json.load(f)
