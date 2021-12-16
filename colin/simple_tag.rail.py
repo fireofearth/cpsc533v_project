@@ -39,7 +39,7 @@ def make_args():
     parser.add_argument("--eps-start", type=float, default=0.99, help="start epsilon for epsilon-greedy strategy")
     parser.add_argument("--eps-end", type=float, default=0.05, help="end epsilon for epsilon-greedy strategy")
     parser.add_argument("--eps-decay", type=float, default=0.9996, help="epsilon decay for epsilon-greedy strategy")
-    parser.add_argument("--n-episodes", type=int, default=20_000, help="number of episodes")
+    parser.add_argument("--n-episodes", type=int, default=10_000, help="number of episodes")
     parser.add_argument("--batch-size", type=int, default=1, help="number of batches of episodes when optimizing")
     parser.add_argument("--update-target-interval", type=int, default=32, help="interval to update target network")
     parser.add_argument("--report-interval", type=int, default=64, help="how frequently to compute running means of losses and rewards")
@@ -74,7 +74,7 @@ def make_args():
     env.reset()
 
     config.common=AttrDict(
-        hidden_size=32,
+        hidden_size=64,
         enable_rnn=config.enable_rnn,
         message_size=2,
         n_rnn_layers=1,
