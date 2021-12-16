@@ -242,7 +242,11 @@ def collin(d):
 
 import json
 if __name__ == "__main__":
-    path = "/Users/frankyu/Desktop/models/advonly_rnn_nadversaries1_ngoodagents1_landmarks0/14_Dec_2021_22_36_36/" 
+    # with reward shaping
+    # path = "/Users/frankyu/Desktop/models/advonly_rnn_nadversaries1_ngoodagents1_landmarks0/14_Dec_2021_22_36_36/" 
+    
+    # no reward shaping
+    path = "/Users/frankyu/Desktop/models/advonly_rnn_nadversaries1_ngoodagents1_landmarks0/14_Dec_2021_22_50_15"
     json_path = os.path.join(path, "config.json")
     with open(json_path) as f:
         config = json.load(f)
