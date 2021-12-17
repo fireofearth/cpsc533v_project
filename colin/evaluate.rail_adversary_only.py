@@ -20,6 +20,10 @@ import imageio
 from pettingzoo.mpe import simple_tag_v2
 from pettingzoo.utils import random_demo
 
+from common import (AttrDict, TimeDelta, Normalizer, POMDPNormalizer, RewardsShaper, Container,
+        get_agent_counts, get_landmark_count, process_config,
+        pad_amt, pad_image, moving_average, pad_values_front)
+
 from common import (AttrDict, TimeDelta, Normalizer, RewardsShaper, Container,
         get_agent_counts, get_landmark_count, process_config,
         pad_amt, pad_image, moving_average, pad_values_front)
@@ -53,7 +57,7 @@ def make_args():
         help="path to config .json file"
     )
     parser.add_argument(
-        "--adversary",
+        "--adversary_path",
         type=file_path,
         help="path to saved adversary weights .pth file"
     )
@@ -62,6 +66,7 @@ def make_args():
         config = json.load(f)
     config = load_attr_dict(config)
     config.device_id = "cpu"
+    config.adversary_path = args.adversary_path
     
     env = simple_tag_v2.env(
         num_good=config.n_good_agents,
@@ -176,8 +181,8 @@ def run_episode(
                 # print("obs, rew", np.round(normalize(obs_curr[4:6]), 2), reward)
                 # print("message index, payload", m_idx, m_up)
                 pass
-            env.render()
-            time.sleep(0.01)
+            # env.render()
+            # time.sleep(0.01)
         
         if save_video:
             rendered_image = env.render(mode='rgb_array')
@@ -220,9 +225,10 @@ def evaluate_agents(config, container, adversary_net):
 
 def evaluate(config, normalizer=None):
     device = torch.device(config.device_id)
+
     adversary_net = CommNet(config, "adversary", normalizer=normalizer).to(device)
     adversary_net.load_state_dict(
-        torch.load(config.adversary)
+        torch.load(config.adversary_path, map_location=torch.device('cpu'))
     )
     adversary_net.eval()
     print("Initialized the agent nets.")
@@ -239,4 +245,4 @@ if __name__ == "__main__":
         normalizer = Normalizer(env) # norm_obs = normalize(obs)
     shapereward = RewardsShaper(env) # reward = shapereward(agent_name, obs)
     criterion = torch.nn.MSELoss()
-    evalutate(config, normalizer)
+    evaluate(config, normalizer)

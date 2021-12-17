@@ -39,7 +39,7 @@ def load_attr_dict(d):
     config = AttrDict()
     for key in d.keys():
         if isinstance(d[key], dict):
-            config[key] = collin(d[key])
+            config[key] = load_attr_dict(d[key])
         else:
             config[key] = d[key]
     return config
@@ -48,19 +48,22 @@ def make_args():
     parser = argparse.ArgumentParser("Evaluate training")
     parser.add_argument(
         "--config",
-        type=file_path,
+        type=str,
         help="path to config file"
     )
     parser.add_argument(
-        "--adversary",
-        type=file_path,
+        "--path",
+        type=str,
         help="path to saved adversary weights"
     )
     args = parser.parse_args()
+
+    print('these are the args: ', args.config, args.path)
     with open(args.config) as f:
         config = json.load(f)
     config = load_attr_dict(config)
     config.device_id = "cpu"
+    config.path = args.path
     
     env = simple_tag_v2.env(
         num_good=config.n_good_agents,
@@ -121,14 +124,14 @@ def run_episode(
         if not is_val:
             reward += shapereward(agent_name, obs_curr)
         if should_render:
-            env.render()
+            # env.render()
             if agent_name == "adversary_0":
                 # print("rew, shaped rew", round(_reward, 2), round(reward, 2))
                 # print("obs, normed obs", np.round(obs_curr, 2), np.round(normalize(obs_curr), 2))
                 # print("obs, normed obs", np.round(obs_curr[4:6], 2), np.round(normalize(obs_curr[4:6]), 2))
                 # print("obs, rew", np.round(normalize(obs_curr[4:6]), 2), reward)
                 pass
-            time.sleep(0.05)
+            # time.sleep(0.05)
         
         if save_video:
             rendered_image = env.render(mode='rgb_array')
@@ -170,20 +173,23 @@ def run_episode(
     
     if should_render:
         env.close()
-    if save_video:
-        imageio.mimwrite(save_video_path, rendered_video, fps=30)
-    return episode
+    # if save_video:
+    #     imageio.mimwrite(save_video_path, rendered_video, fps=30)
+    return episode, rendered_video
 
 def evaluate_agents(config, container, adversary_net):
+    all_video = []
     episodic_rewards=AttrDict(adversary=[])
     with torch.no_grad():
-        for e in range(config.n_eval_episodes):
-            should_render = e % 10 == 0
-            episode = run_episode(
+        for e in range(100):
+            print(e)
+            should_render = e % 1 == 0
+            episode, rendered_video = run_episode(
                 config, container, adversary_net,
                 should_render=should_render, is_val=True
             )
             episodic_rewards.adversary.append(episode.reward.adversary)
+            all_video += rendered_video
     min_adversary_rewards = min(episodic_rewards.adversary)
     avg_adversary_rewards = statistics.fmean(episodic_rewards.adversary)
     max_adversary_rewards = max(episodic_rewards.adversary)
@@ -192,11 +198,16 @@ def evaluate_agents(config, container, adversary_net):
     print(f"    avg adversary {avg_adversary_rewards:.2f}")
     print(f"    max adversary {max_adversary_rewards:.2f}")
 
+    # imageio.mimwrite("/Users/frankyu/Documents/University/Fall2021/CPSC533V/cpsc533v_project/all_results/multiple_adversary_results.mp4", all_video, fps=60)
+
+
 def evaluate(config, normalizer=None):
-    device = torch.device(config.device_id)
+    device = torch.device('cpu')
     adversary_net = SimpleTagNet(config, "adversary", normalizer=normalizer).to(device)
+    path = config.path
+    print('here we go!: ', path)
     adversary_net.load_state_dict(
-        torch.load(config.adversary)
+        torch.load(path, map_location=torch.device('cpu'))
     )
     adversary_net.eval()
     print("Initialized the agent nets.")
@@ -210,4 +221,4 @@ if __name__ == "__main__":
     normalizer = Normalizer(env) # norm_obs = normalize(obs)
     shapereward = RewardsShaper(env) # reward = shapereward(agent_name, obs)
     criterion = torch.nn.MSELoss()
-    evalutate(config, normalizer)
+    evaluate(config, normalizer)

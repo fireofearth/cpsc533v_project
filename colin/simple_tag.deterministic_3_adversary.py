@@ -5,6 +5,7 @@ import math
 import random
 import collections
 import statistics
+import imageio
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -57,44 +58,53 @@ def deterministic_policy(observation, agent_name):
         return 0
         # return random.randint(0, 4)
     return 0
+all_runs = []
+all_video = []
+for i in range(50):
+    env.reset()
+    print(*[landmark.name for landmark in env.world.landmarks])
+    print(*[agent.name for agent in env.world.agents])
+    agent_rewards = 0
+    reshaped_agent_rewards = 0
+    adversary_rewards = 0
+    reshaped_adversary_rewards = 0
+    rewardshaper = RewardsShaper(env)
+    normalize = Normalizer(env)
+    for agent_step_idx, agent_name in enumerate(env.agent_iter()):
+        image = env.render(mode='rgb_array')
+        all_video.append(pad_image(image))
+        observation, reward, done, info = env.last()
+        reshaped_reward = rewardshaper(agent_name, observation)
+        # norm_obs = normalize(observation)
 
-env.reset()
-print(*[landmark.name for landmark in env.world.landmarks])
-print(*[agent.name for agent in env.world.agents])
-agent_rewards = 0
-reshaped_agent_rewards = 0
-adversary_rewards = 0
-reshaped_adversary_rewards = 0
-rewardshaper = RewardsShaper(env)
-normalize = Normalizer(env)
-for agent_step_idx, agent_name in enumerate(env.agent_iter()):
-    env.render()
-    observation, reward, done, info = env.last()
-    reshaped_reward = rewardshaper(agent_name, observation)
-    # norm_obs = normalize(observation)
+        if done:
+            env.step(None)
+        else:
+            action = deterministic_policy(observation, agent_name)
+            env.step(action)
+            
+        if "adversary" in agent_name:
+            adversary_rewards += reward
+            reshaped_adversary_rewards += reshaped_reward
+        elif "agent" in agent_name:
+            agent_rewards += reward
+            reshaped_agent_rewards += reshaped_reward
 
-    if done:
-        env.step(None)
-    else:
-        action = deterministic_policy(observation, agent_name)
-        env.step(action)
+        if agent_name == "agent_0":
+            pass
+        elif agent_name == "adversary_0":
+            pass
         
-    if "adversary" in agent_name:
-        adversary_rewards += reward
-        reshaped_adversary_rewards += reshaped_reward
-    elif "agent" in agent_name:
-        agent_rewards += reward
-        reshaped_agent_rewards += reshaped_reward
+        # time.sleep(0.05)
+    all_runs.append(adversary_rewards)
+    print(f"episode ran for {max_cycles} cycles")
+    print("agent_rewards", agent_rewards)
+    print("adversary_rewards", adversary_rewards)
+    print("reshaped_agent_rewards", reshaped_agent_rewards)
+    print("reshaped_adversary_rewards", reshaped_adversary_rewards)
 
-    if agent_name == "agent_0":
-        pass
-    elif agent_name == "adversary_0":
-        pass
-    
-    time.sleep(0.05)
+imageio.mimwrite("/Users/frankyu/Documents/University/Fall2021/CPSC533V/cpsc533v_project/all_results/multiple_adversary_handcrafted_results.mp4", all_video, fps=30)
 
-print(f"episode ran for {max_cycles} cycles")
-print("agent_rewards", agent_rewards)
-print("adversary_rewards", adversary_rewards)
-print("reshaped_agent_rewards", reshaped_agent_rewards)
-print("reshaped_adversary_rewards", reshaped_adversary_rewards)
+print('mean rewards: ', statistics.mean(all_runs))
+print('max rewards: ', max(all_runs))
+print('min rewards: ', min(all_runs))
