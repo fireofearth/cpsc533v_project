@@ -122,12 +122,6 @@ def run_episode(
         
         agent_type, agent_idx = agent_name.split("_")
         agent_idx = int(agent_idx)
-        
-        # hack to make agent stationary and skip network
-        if agent_type == "agent":
-            env.step(0)
-            continue
-        # else "adversary"
 
         if done:
             step_record[agent_type][agent_idx] = AttrDict(
@@ -139,6 +133,12 @@ def run_episode(
             )
             env.step(None)
             continue
+
+        # hack to make agent stationary and skip network
+        if agent_type == "agent":
+            env.step(0)
+            continue
+        # else "adversary"
 
         if config[agent_type].enable_rnn:
             hidden = container.get_hidden(agent_name)
