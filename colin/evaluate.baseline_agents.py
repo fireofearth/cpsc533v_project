@@ -52,12 +52,12 @@ def make_args():
         help="path to config .json file"
     )
     parser.add_argument(
-        "--agent",
+        "--agent_path",
         type=file_path,
         help="path to saved good agent weights .pth file"
     )
     parser.add_argument(
-        "--adversary",
+        "--adversary_path",
         type=file_path,
         help="path to saved adversary weights .pth file"
     )
@@ -66,6 +66,9 @@ def make_args():
         config = json.load(f)
     config = load_attr_dict(config)
     config.device_id = "cpu"
+
+    config.adversary_path = args.adversary_path
+    config.agent_path = args.agent_path
     
     env = simple_tag_v2.env(
         num_good=config.n_good_agents,
@@ -124,14 +127,14 @@ def run_episode(
         if not is_val:
             reward += shapereward(agent_name, obs_curr)
         if should_render:
-            env.render()
+            # env.render()
             if agent_name == "adversary_0":
                 # print("rew, shaped rew", round(_reward, 2), round(reward, 2))
                 # print("obs, normed obs", np.round(obs_curr, 2), np.round(normalize(obs_curr), 2))
                 # print("obs, normed obs", np.round(obs_curr[4:6], 2), np.round(normalize(obs_curr[4:6]), 2))
                 # print("obs, rew", np.round(normalize(obs_curr[4:6]), 2), reward)
                 pass
-            time.sleep(0.05)
+            # time.sleep(0.05)
 
         if save_video:
             rendered_image = env.render(mode='rgb_array')
@@ -182,7 +185,7 @@ def run_episode(
 def evaluate_agents(config, container, adversary_net, agent_net):
     episodic_rewards=AttrDict(adversary=[], agent=[])
     with torch.no_grad():
-        for e in range(config.n_eval_episodes):
+        for e in range(100):
             should_render = e % 10 == 0
             episode = run_episode(
                 config, container, adversary_net, agent_net,
@@ -209,10 +212,10 @@ def evaluate(config, normalizer=None):
     adversary_net = SimpleTagNet(config, "adversary", normalizer=normalizer).to(device)
     agent_net = SimpleTagNet(config, "agent", normalizer=normalizer).to(device)
     adversary_net.load_state_dict(
-        torch.load(config.adversary)
+        torch.load(config.adversary_path, map_location=torch.device('cpu'))
     )
     agent_net.load_state_dict(
-        torch.load(config.agent)
+        torch.load(config.agent_path, map_location=torch.device('cpu'))
     )
     adversary_net.eval()
     agent_net.eval()
@@ -227,4 +230,4 @@ if __name__ == "__main__":
     normalizer = Normalizer(env) # norm_obs = normalize(obs)
     shapereward = RewardsShaper(env) # reward = shapereward(agent_name, obs)
     criterion = torch.nn.MSELoss()
-    evalutate(config, normalizer)
+    evaluate(config, normalizer)

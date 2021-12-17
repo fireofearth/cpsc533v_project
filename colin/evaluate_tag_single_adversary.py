@@ -175,7 +175,7 @@ def run_episode(
         env.close()
     if save_video:
         imageio.mimwrite(save_video_path, rendered_video, fps=30)
-    return episode
+    return episode, rendered_video
 
 def evaluate_agents(config, container, adversary_net, savedir):
     videodir = os.path.join(savedir, "evaluation")
@@ -183,8 +183,9 @@ def evaluate_agents(config, container, adversary_net, savedir):
     # save_agent(os.path.join(savedir, f"adversary-net-{episode_idx}.pth"), adversary_net)
     adversary_net.eval()
     episodic_rewards=AttrDict(adversary=[])
+    all_videos = []
     with torch.no_grad():
-        for e in range(100):
+        for e in range(50):
             save_video = e % 1 == 0
             validation_save_path = None
             should_render = False
@@ -192,11 +193,12 @@ def evaluate_agents(config, container, adversary_net, savedir):
                 # validation_save_dir = os.path.join(videodir, f"test{e}")
                 validation_save_path = os.path.join(videodir, f"eval{e}.mp4")
                 should_render = config.visualize_on_evaluation
-            episode = run_episode(
+            episode, rendered_video = run_episode(
                 config, container, adversary_net,
                 should_render=should_render, save_video=save_video,
                 save_video_path=validation_save_path, is_val=True
             )
+            all_videos += rendered_video
             episodic_rewards.adversary.append(episode.reward.adversary)
     print('max at {} reward: {}'.format(torch.argmax(torch.Tensor(episodic_rewards.adversary)), max(episodic_rewards.adversary)))
     print('min at {} reward: {}'.format(torch.argmin(torch.Tensor(episodic_rewards.adversary)), min(episodic_rewards.adversary)))
@@ -204,7 +206,7 @@ def evaluate_agents(config, container, adversary_net, savedir):
     print(f"Average evaluation reward after training is: ")
     print(f"    adversary {avg_adversary_rewards:.2f}")
     adversary_net.train()
-    return episodic_rewards
+    return episodic_rewards, all_videos
 
 def evaluate(config, normalizer=None, path=None):
     # if episode_idx % config.evaluation_interval == 0:
@@ -220,7 +222,7 @@ def evaluate(config, normalizer=None, path=None):
     # with reward shaping
     adversary_net.load_state_dict(torch.load(os.path.join(path, 'adversary-net-10000.pth'), map_location=torch.device('cpu')))
 
-    eval_episodic_rewards = evaluate_agents(
+    eval_episodic_rewards, all_videos = evaluate_agents(
         config, container, adversary_net, path
     )
     # logger.eval_episodic_rewards.append(eval_episodic_rewards)
@@ -229,7 +231,7 @@ def evaluate(config, normalizer=None, path=None):
     # with open(os.path.join(savedir, "log.json"), "w") as f:
     #      json.dump(logger, f)
     # plot_training_run(savedir, logger)
-    return 
+    return all_videos
 
 def collin(d):
     config = AttrDict()
@@ -257,4 +259,7 @@ if __name__ == "__main__":
     normalizer = Normalizer(env) # norm_obs = normalize(obs)
     shapereward = RewardsShaper(env) # reward = shapereward(agent_name, obs)
     criterion = torch.nn.MSELoss()
-    adversary_net = evaluate(config, normalizer, path)
+    all_videos = evaluate(config, normalizer, path)
+
+    imageio.mimwrite("/Users/frankyu/Documents/University/Fall2021/CPSC533V/cpsc533v_project/all_results/single_adversary_noRewardShaping_results.mp4", all_videos, fps=30)
+
