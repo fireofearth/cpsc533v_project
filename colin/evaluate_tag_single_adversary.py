@@ -185,8 +185,9 @@ def evaluate_agents(config, container, adversary_net, savedir):
     episodic_rewards=AttrDict(adversary=[])
     all_videos = []
     with torch.no_grad():
-        for e in range(50):
-            save_video = e % 1 == 0
+        for e in range(100):
+            # save_video = e % 1 == 0
+            save_video=0
             validation_save_path = None
             should_render = False
             if save_video:
@@ -220,7 +221,7 @@ def evaluate(config, normalizer=None, path=None):
 
     # Load the models!
     # with reward shaping
-    adversary_net.load_state_dict(torch.load(os.path.join(path, 'adversary-net-10000.pth'), map_location=torch.device('cpu')))
+    adversary_net.load_state_dict(torch.load(os.path.join(path, 'adversary-net-9500.pth'), map_location=torch.device('cpu')))
 
     eval_episodic_rewards, all_videos = evaluate_agents(
         config, container, adversary_net, path
@@ -245,9 +246,11 @@ def collin(d):
 import json
 if __name__ == "__main__":
     # with reward shaping
+    # use 8500
     # path = "/Users/frankyu/Desktop/models/advonly_rnn_nadversaries1_ngoodagents1_landmarks0/15_Dec_2021_19_25_49/" 
 
     # no reward shaping
+    # use 9500
     path = "/Users/frankyu/Desktop/models/advonly_rnn_nadversaries1_ngoodagents1_landmarks0-noRewardShape/15_Dec_2021_19_25_48"
     
     json_path = os.path.join(path, "config.json")

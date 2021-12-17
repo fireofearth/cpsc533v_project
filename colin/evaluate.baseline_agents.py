@@ -136,9 +136,9 @@ def run_episode(
                 pass
             # time.sleep(0.05)
 
-        if save_video:
-            rendered_image = env.render(mode='rgb_array')
-            rendered_video.append(pad_image(rendered_image))
+        # if save_video:
+        rendered_image = env.render(mode='rgb_array')
+        rendered_video.append(pad_image(rendered_image))
         
         agent_type, agent_idx = agent_name.split("_")
         agent_idx = int(agent_idx)
@@ -180,19 +180,24 @@ def run_episode(
         env.close()
     if save_video:
         imageio.mimwrite(save_video_path, rendered_video, fps=30)
-    return episode
+    return episode, rendered_video
 
 def evaluate_agents(config, container, adversary_net, agent_net):
     episodic_rewards=AttrDict(adversary=[], agent=[])
+    all_video = []
     with torch.no_grad():
         for e in range(100):
+            print(e)
             should_render = e % 10 == 0
-            episode = run_episode(
+            episode, rendered_video = run_episode(
                 config, container, adversary_net, agent_net,
                 should_render=should_render, is_val=True
             )
             episodic_rewards.adversary.append(episode.reward.adversary)
             episodic_rewards.agent.append(episode.reward.agent)
+            all_video += rendered_video
+
+
     min_adversary_rewards = min(episodic_rewards.adversary)
     avg_adversary_rewards = statistics.fmean(episodic_rewards.adversary)
     max_adversary_rewards = max(episodic_rewards.adversary)
@@ -206,6 +211,9 @@ def evaluate_agents(config, container, adversary_net, agent_net):
     print(f"    min agent {min_agent_rewards:.2f}")
     print(f"    avg agent {avg_agent_rewards:.2f}")
     print(f"    max agent {max_agent_rewards:.2f}")
+
+    imageio.mimwrite("/Users/frankyu/Documents/University/Fall2021/CPSC533V/cpsc533v_project/all_results/full_setting.mp4", all_video, fps=60)
+
 
 def evaluate(config, normalizer=None):
     device = torch.device(config.device_id)

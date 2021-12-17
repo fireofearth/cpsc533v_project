@@ -67,6 +67,8 @@ def make_args():
     config = load_attr_dict(config)
     config.device_id = "cpu"
     config.adversary_path = args.adversary_path
+
+    print('****************CONFIG COMMUNICATION: ', config.enable_messaging)
     
     env = simple_tag_v2.env(
         num_good=config.n_good_agents,
@@ -184,9 +186,9 @@ def run_episode(
             # env.render()
             # time.sleep(0.01)
         
-        if save_video:
-            rendered_image = env.render(mode='rgb_array')
-            rendered_video.append(pad_image(rendered_image))
+        # if save_video:
+        rendered_image = env.render(mode='rgb_array')
+        rendered_video.append(pad_image(rendered_image))
         
         env.step(action)
         step_record[agent_type][agent_idx] = AttrDict(
@@ -203,17 +205,19 @@ def run_episode(
         env.close()
     if save_video:
         imageio.mimwrite(save_video_path, rendered_video, fps=30)
-    return episode
+    return episode, rendered_video
 
 def evaluate_agents(config, container, adversary_net):
     episodic_rewards=AttrDict(adversary=[])
+    all_video = []
     with torch.no_grad():
-        for e in range(config.n_eval_episodes):
+        for e in range(50):
             should_render = e % 10 == 0
-            episode = run_episode(
+            episode, rendered_video = run_episode(
                 config, container, adversary_net,
                 should_render=should_render, is_val=True
             )
+            all_video += rendered_video
             episodic_rewards.adversary.append(episode.reward.adversary)
     min_adversary_rewards = min(episodic_rewards.adversary)
     avg_adversary_rewards = statistics.fmean(episodic_rewards.adversary)
@@ -222,6 +226,8 @@ def evaluate_agents(config, container, adversary_net):
     print(f"    min adversary {min_adversary_rewards:.2f}")
     print(f"    avg adversary {avg_adversary_rewards:.2f}")
     print(f"    max adversary {max_adversary_rewards:.2f}")
+
+    imageio.mimwrite("/Users/frankyu/Documents/University/Fall2021/CPSC533V/cpsc533v_project/all_results/rial_only_adversary_Comm.mp4", all_video, fps=60)
 
 def evaluate(config, normalizer=None):
     device = torch.device(config.device_id)

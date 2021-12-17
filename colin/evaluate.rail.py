@@ -20,6 +20,10 @@ import imageio
 from pettingzoo.mpe import simple_tag_v2
 from pettingzoo.utils import random_demo
 
+from common import (AttrDict, TimeDelta, Normalizer, POMDPNormalizer, RewardsShaper, Container,
+        get_agent_counts, get_landmark_count, process_config,
+        pad_amt, pad_image, moving_average, pad_values_front)
+
 from common import (AttrDict, TimeDelta, Normalizer, RewardsShaper, Container,
         get_agent_counts, get_landmark_count, process_config,
         pad_amt, pad_image, moving_average, pad_values_front)
@@ -53,12 +57,12 @@ def make_args():
         help="path to config .json file"
     )
     parser.add_argument(
-        "--agent",
+        "--agent_path",
         type=file_path,
         help="path to saved good agent weights .pth file"
     )
     parser.add_argument(
-        "--adversary",
+        "--adversary_path",
         type=file_path,
         help="path to saved adversary weights .pth file"
     )
@@ -67,6 +71,8 @@ def make_args():
         config = json.load(f)
     config = load_attr_dict(config)
     config.device_id = "cpu"
+    config.agent_path = args.agent_path
+    config.adversary_path = args.adversary_path
     
     env = simple_tag_v2.env(
         num_good=config.n_good_agents,
@@ -174,12 +180,12 @@ def run_episode(
                 # print("obs, rew", np.round(normalize(obs_curr[4:6]), 2), reward)
                 # print("message index, payload", m_idx, m_up)
                 pass
-            env.render()
-            time.sleep(0.01)
+            # env.render()
+            # time.sleep(0.01)
         
-        if save_video:
-            rendered_image = env.render(mode='rgb_array')
-            rendered_video.append(pad_image(rendered_image))
+        # if save_video:
+        rendered_image = env.render(mode='rgb_array')
+        rendered_video.append(pad_image(rendered_image))
         
         env.step(action)
         step_record[agent_type][agent_idx] = AttrDict(
@@ -196,19 +202,23 @@ def run_episode(
         env.close()
     if save_video:
         imageio.mimwrite(save_video_path, rendered_video, fps=30)
-    return episode
+    return episode, rendered_video
 
 def evaluate_agents(config, container, adversary_net, agent_net):
     episodic_rewards=AttrDict(adversary=[], agent=[])
+    all_video = []
     with torch.no_grad():
-        for e in range(config.n_eval_episodes):
+        for e in range(50):
             should_render = e % 10 == 0
-            episode = run_episode(
+            episode, rendered_video = run_episode(
                 config, container, adversary_net, agent_net,
                 should_render=should_render, is_val=True
             )
+            all_video += rendered_video
             episodic_rewards.adversary.append(episode.reward.adversary)
             episodic_rewards.agent.append(episode.reward.agent)
+
+    imageio.mimwrite("/Users/frankyu/Documents/University/Fall2021/CPSC533V/cpsc533v_project/all_results/rial_full_setting.mp4", all_video, fps=60)
     min_adversary_rewards = min(episodic_rewards.adversary)
     avg_adversary_rewards = statistics.fmean(episodic_rewards.adversary)
     max_adversary_rewards = max(episodic_rewards.adversary)
@@ -228,10 +238,10 @@ def evaluate(config, normalizer=None):
     adversary_net = CommNet(config, "adversary", normalizer=normalizer).to(device)
     agent_net = CommNet(config, "agent", normalizer=normalizer).to(device)
     adversary_net.load_state_dict(
-        torch.load(config.adversary)
+        torch.load(config.adversary_path, map_location=torch.device('cpu'))
     )
     agent_net.load_state_dict(
-        torch.load(config.agent)
+        torch.load(config.agent_path, map_location=torch.device('cpu'))
     )
     adversary_net.eval()
     agent_net.eval()
@@ -249,4 +259,4 @@ if __name__ == "__main__":
         normalizer = Normalizer(env) # norm_obs = normalize(obs)
     shapereward = RewardsShaper(env) # reward = shapereward(agent_name, obs)
     criterion = torch.nn.MSELoss()
-    evalutate(config, normalizer)
+    evaluate(config, normalizer)

@@ -133,9 +133,9 @@ def run_episode(
                 pass
             # time.sleep(0.05)
         
-        if save_video:
-            rendered_image = env.render(mode='rgb_array')
-            rendered_video.append(pad_image(rendered_image))
+        # if save_video:
+        rendered_image = env.render(mode='rgb_array')
+        rendered_video.append(pad_image(rendered_image))
 
         agent_type, agent_idx = agent_name.split("_")
         agent_idx = int(agent_idx)
@@ -181,9 +181,10 @@ def evaluate_agents(config, container, adversary_net):
     all_video = []
     episodic_rewards=AttrDict(adversary=[])
     with torch.no_grad():
-        for e in range(100):
+        for e in range(50):
             print(e)
             should_render = e % 1 == 0
+            # should_render=0
             episode, rendered_video = run_episode(
                 config, container, adversary_net,
                 should_render=should_render, is_val=True
@@ -198,7 +199,7 @@ def evaluate_agents(config, container, adversary_net):
     print(f"    avg adversary {avg_adversary_rewards:.2f}")
     print(f"    max adversary {max_adversary_rewards:.2f}")
 
-    # imageio.mimwrite("/Users/frankyu/Documents/University/Fall2021/CPSC533V/cpsc533v_project/all_results/multiple_adversary_results.mp4", all_video, fps=60)
+    imageio.mimwrite("/Users/frankyu/Documents/University/Fall2021/CPSC533V/cpsc533v_project/all_results/multiple_adversary.mp4", all_video, fps=60)
 
 
 def evaluate(config, normalizer=None):
